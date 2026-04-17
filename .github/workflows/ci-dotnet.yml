@@ -54,7 +54,7 @@ jobs:
     outputs:
       solution: ${{ steps.find.outputs.solution }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - id: find
         shell: bash
         run: |
@@ -87,7 +87,7 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v5
@@ -146,7 +146,7 @@ jobs:
     runs-on: ${{ inputs.runs-on }}
     needs: [resolve-solution, build-test]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: actions/setup-dotnet@v5
         with:
           global-json-file: global.json
@@ -193,7 +193,7 @@ jobs:
     if: inputs.aot-rid != ''
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: actions/setup-dotnet@v5
         with:
           global-json-file: global.json
