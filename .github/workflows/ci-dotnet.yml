@@ -31,6 +31,16 @@ on:
         required: false
         type: boolean
         default: true
+      install-workloads:
+        description: Comma-separated dotnet workloads to install before restore (e.g. "android,maui").
+        required: false
+        type: string
+        default: ""
+      nuget-config-path:
+        description: Path to NuGet.Config passed as --configfile to restore. Empty = default.
+        required: false
+        type: string
+        default: ""
 
 env:
   DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "true"
@@ -84,8 +94,19 @@ jobs:
         with:
           global-json-file: global.json
 
+      - name: Install workloads
+        if: inputs.install-workloads != ''
+        shell: bash
+        run: |
+          IFS=',' read -ra WL <<< "${{ inputs.install-workloads }}"
+          for w in "${WL[@]}"; do dotnet workload install "$(echo "$w" | xargs)"; done
+
       - name: Restore
-        run: dotnet restore ${{ needs.resolve-solution.outputs.solution }}
+        shell: bash
+        run: |
+          CFG=""
+          [ -n "${{ inputs.nuget-config-path }}" ] && CFG="--configfile ${{ inputs.nuget-config-path }}"
+          dotnet restore ${{ needs.resolve-solution.outputs.solution }} $CFG
 
       - name: Format (verify)
         continue-on-error: true
@@ -129,7 +150,18 @@ jobs:
       - uses: actions/setup-dotnet@v5
         with:
           global-json-file: global.json
-      - run: dotnet restore ${{ needs.resolve-solution.outputs.solution }}
+      - name: Install workloads
+        if: inputs.install-workloads != ''
+        shell: bash
+        run: |
+          IFS=',' read -ra WL <<< "${{ inputs.install-workloads }}"
+          for w in "${WL[@]}"; do dotnet workload install "$(echo "$w" | xargs)"; done
+      - name: Restore
+        shell: bash
+        run: |
+          CFG=""
+          [ -n "${{ inputs.nuget-config-path }}" ] && CFG="--configfile ${{ inputs.nuget-config-path }}"
+          dotnet restore ${{ needs.resolve-solution.outputs.solution }} $CFG
 
       - name: Check for known vulnerabilities
         run: dotnet list ${{ needs.resolve-solution.outputs.solution }} package --vulnerable --include-transitive
@@ -165,11 +197,20 @@ jobs:
       - uses: actions/setup-dotnet@v5
         with:
           global-json-file: global.json
-      - name: AOT publish
+      - name: Install workloads
+        if: inputs.install-workloads != ''
+        shell: bash
         run: |
+          IFS=',' read -ra WL <<< "${{ inputs.install-workloads }}"
+          for w in "${WL[@]}"; do dotnet workload install "$(echo "$w" | xargs)"; done
+      - name: AOT publish
+        shell: bash
+        run: |
+          CFG=""
+          [ -n "${{ inputs.nuget-config-path }}" ] && CFG="--configfile ${{ inputs.nuget-config-path }}"
           ENTRY=$(find src -maxdepth 3 -name '*.csproj' | xargs grep -l '<OutputType>Exe</OutputType>' 2>/dev/null | head -n1 || true)
           if [ -z "$ENTRY" ]; then
             ENTRY=$(find src -maxdepth 3 -name '*.csproj' | head -n1)
           fi
           echo "Publishing $ENTRY for ${{ inputs.aot-rid }}"
-          dotnet publish "$ENTRY" -c Release -r ${{ inputs.aot-rid }} /p:PublishAot=true /p:StripSymbols=true
+          dotnet publish "$ENTRY" -c Release -r ${{ inputs.aot-rid }} /p:PublishAot=true /p:StripSymbols=true $CFG
