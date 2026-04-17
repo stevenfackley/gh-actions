@@ -1,0 +1,30 @@
+name: Setup Env
+description: Write .env file from a secret blob with chmod 600. Extracted from StackAlchemist composite action.
+
+inputs:
+  dotenv-content:
+    description: Full contents of .env file. Newline-separated KEY=VALUE.
+    required: true
+  path:
+    description: Where to write the .env file.
+    required: false
+    default: .env
+  mode:
+    description: chmod mode.
+    required: false
+    default: "600"
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        DOTENV: ${{ inputs.dotenv-content }}
+        TARGET: ${{ inputs.path }}
+        MODE: ${{ inputs.mode }}
+      run: |
+        set -euo pipefail
+        touch "$TARGET"
+        chmod "$MODE" "$TARGET"
+        printf '%s' "$DOTENV" > "$TARGET"
+        echo "Wrote $(wc -l < "$TARGET") lines to $TARGET (mode=$MODE)."

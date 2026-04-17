@@ -1,0 +1,40 @@
+name: Verify Image Exists
+description: Check a GHCR image manifest exists before deploying. Extracted from p1-opshub deploy-prod pre-deploy gate.
+
+inputs:
+  registry:
+    required: false
+    default: ghcr.io
+  image-name:
+    description: Image path minus registry.
+    required: true
+  tag:
+    description: Tag to verify (e.g. sha-<short> or prod-<sha>).
+    required: true
+  github-token:
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - uses: docker/login-action@v3
+      with:
+        registry: ${{ inputs.registry }}
+        username: ${{ github.actor }}
+        password: ${{ inputs.github-token }}
+
+    - shell: bash
+      env:
+        REG: ${{ inputs.registry }}
+        IMG: ${{ inputs.image-name }}
+        TAG: ${{ inputs.tag }}
+      run: |
+        set -euo pipefail
+        REF="$REG/$IMG:$TAG"
+        echo "Verifying $REF ..."
+        if ! docker manifest inspect "$REF" > /dev/null 2>&1; then
+          echo "::error::Image not found: $REF"
+          echo "::error::Refusing to deploy a non-existent image."
+          exit 1
+        fi
+        echo "OK: $REF is present."

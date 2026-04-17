@@ -1,0 +1,106 @@
+name: Deploy (EC2 via SSH)
+
+# Extracted from steveackleyorg/.github/workflows/deploy.yml
+# Caller provides IMAGE_REF, env vars/secrets, and optional app-dir.
+# docker-compose.yml in the repo must reference the image via ${IMAGE_REF}.
+
+on:
+  workflow_call:
+    inputs:
+      image-ref:
+        description: Fully-qualified image ref (e.g. ghcr.io/owner/repo@sha256:... or :tag).
+        required: true
+        type: string
+      ec2-app-dir-secret-name:
+        description: Name of the secret holding the app directory path on EC2.
+        required: false
+        type: string
+        default: "EC2_APP_DIR"
+      environment:
+        required: false
+        type: string
+        default: "production"
+      health-url:
+        description: URL the deploy loop polls on the instance (e.g. http://localhost:3000/).
+        required: false
+        type: string
+        default: "http://localhost:3000/"
+      container-name:
+        description: Name of the container to inspect during health check.
+        required: false
+        type: string
+        default: ""
+      env-file-script:
+        description: |
+          Shell snippet to produce /etc/.env contents; stdin is the .env file.
+          Defaults to a no-op — callers can override via secrets (recommended).
+          NOTE: For auth secrets, prefer passing them through GitHub Secrets and
+          letting docker-compose consume them via env_file: .env, constructed on
+          the instance with chmod 600.
+        required: false
+        type: string
+        default: ""
+    secrets:
+      EC2_HOST:
+        required: true
+      EC2_USER:
+        required: true
+      EC2_SSH_PRIVATE_KEY:
+        required: true
+      EC2_APP_DIR:
+        required: true
+      DOTENV_CONTENT:
+        description: Full contents of the .env file, newline-separated KEY=VALUE. Written with chmod 600.
+        required: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          IMAGE_REF: ${{ inputs.image-ref }}
+          HEALTH_URL: ${{ inputs.health-url }}
+          CONTAINER_NAME: ${{ inputs.container-name }}
+          DOTENV_CONTENT: ${{ secrets.DOTENV_CONTENT }}
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+          port: 22
+          envs: IMAGE_REF,HEALTH_URL,CONTAINER_NAME,DOTENV_CONTENT
+          script: |
+            set -e
+            cd "${{ secrets.EC2_APP_DIR }}"
+
+            git stash --include-untracked || true
+            git pull origin main
+
+            # Write .env with chmod 600 BEFORE content
+            touch .env && chmod 600 .env
+            printf '%s' "$DOTENV_CONTENT" > .env
+
+            IMAGE_REF="$IMAGE_REF" docker compose pull
+            IMAGE_REF="$IMAGE_REF" docker compose up -d --remove-orphans
+            docker image prune -f
+
+            echo "Waiting for health at $HEALTH_URL ..."
+            for i in $(seq 1 30); do
+              if [ -n "$CONTAINER_NAME" ]; then
+                STATUS=$(docker inspect --format='{{.State.Status}}' "$CONTAINER_NAME" 2>/dev/null || echo "missing")
+              else
+                STATUS="n/a"
+              fi
+              HTTP=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 "$HEALTH_URL" 2>/dev/null || echo "000")
+              echo "  attempt $i/30: container=$STATUS http=$HTTP"
+              if [ "$HTTP" = "200" ] || [ "$HTTP" = "301" ] || [ "$HTTP" = "302" ]; then
+                echo "Deployment healthy"
+                exit 0
+              fi
+              sleep 2
+            done
+            echo "Deployment did not become healthy"
+            [ -n "$CONTAINER_NAME" ] && docker logs "$CONTAINER_NAME" --tail 50 || true
+            exit 1

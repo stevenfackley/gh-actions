@@ -1,0 +1,63 @@
+name: Release
+
+# Creates a release tag YYYYMMDD_<project>_Release pointing at the current main HEAD
+# and publishes a GitHub Release. Intended to be called manually from the caller repo.
+
+on:
+  workflow_call:
+    inputs:
+      project-name:
+        description: Slug used in the tag, e.g. P1OpsHub -> 20260416_P1OpsHub_Release.
+        required: true
+        type: string
+      ref:
+        required: false
+        type: string
+        default: "main"
+      draft:
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      tag: ${{ steps.make-tag.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+          fetch-depth: 0
+
+      - id: make-tag
+        shell: bash
+        run: |
+          DATE=$(date -u +%Y%m%d)
+          TAG="${DATE}_${{ inputs.project-name }}_Release"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Tag and push
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git rev-parse "${{ steps.make-tag.outputs.tag }}" >/dev/null 2>&1; then
+            echo "Tag already exists; skipping push."
+          else
+            git tag "${{ steps.make-tag.outputs.tag }}"
+            git push origin "${{ steps.make-tag.outputs.tag }}"
+          fi
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ARGS=""
+          [ "${{ inputs.draft }}" = "true" ] && ARGS="--draft"
+          gh release create "${{ steps.make-tag.outputs.tag }}" \
+            --title "${{ steps.make-tag.outputs.tag }}" \
+            --generate-notes $ARGS || echo "release already exists"

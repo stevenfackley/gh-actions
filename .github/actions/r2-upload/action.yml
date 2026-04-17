@@ -1,0 +1,57 @@
+name: Cloudflare R2 Upload
+description: Sync a local directory to an R2 bucket via wrangler. v2 stub — wired but not exercised until a project needs it.
+
+inputs:
+  bucket:
+    description: R2 bucket name.
+    required: true
+  source:
+    description: Local directory to sync.
+    required: true
+  prefix:
+    description: Key prefix inside the bucket.
+    required: false
+    default: ""
+  account-id:
+    required: true
+  api-token:
+    description: Cloudflare API token with R2:Edit on the target bucket.
+    required: true
+  delete-stale:
+    description: Remove remote keys that no longer exist locally.
+    required: false
+    default: "false"
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v4
+      with:
+        node-version: "22"
+
+    - shell: bash
+      env:
+        CLOUDFLARE_ACCOUNT_ID: ${{ inputs.account-id }}
+        CLOUDFLARE_API_TOKEN: ${{ inputs.api-token }}
+        BUCKET: ${{ inputs.bucket }}
+        SRC: ${{ inputs.source }}
+        PREFIX: ${{ inputs.prefix }}
+        DELETE: ${{ inputs.delete-stale }}
+      run: |
+        set -euo pipefail
+        npm i -g wrangler@4
+        if [ ! -d "$SRC" ]; then
+          echo "::error::Source directory not found: $SRC"
+          exit 1
+        fi
+        EXTRA=""
+        [ "$DELETE" = "true" ] && EXTRA="--delete"
+        # wrangler r2 object put does not do dir-sync natively; walk files.
+        find "$SRC" -type f | while read -r f; do
+          REL="${f#$SRC/}"
+          KEY="${PREFIX:+$PREFIX/}$REL"
+          wrangler r2 object put "$BUCKET/$KEY" --file "$f" --remote
+        done
+        if [ -n "$EXTRA" ]; then
+          echo "Note: --delete-stale requested; implement via list+diff if needed."
+        fi

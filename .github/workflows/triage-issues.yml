@@ -1,0 +1,130 @@
+name: Triage Issues After Successful Deploy
+
+# Generalized from p1-opshub. Scans commit range for issue refs (#N, closes #N, fixes #N),
+# then for each open issue:
+#   1. Applies label (default "testing")
+#   2. Optionally reassigns (skipped for devops/development labels)
+#   3. Optionally moves project item to a target status
+
+on:
+  workflow_call:
+    inputs:
+      before_sha:
+        required: false
+        type: string
+        default: ""
+      after_sha:
+        required: true
+        type: string
+      apply-label:
+        required: false
+        type: string
+        default: "testing"
+      reassign-to:
+        required: false
+        type: string
+        default: ""
+      skip-labels-regex:
+        description: If the issue has any of these labels, it is NOT reassigned.
+        required: false
+        type: string
+        default: "devops|development|infrastructure"
+      project-id:
+        description: GitHub ProjectV2 node ID. Empty = skip project updates.
+        required: false
+        type: string
+        default: ""
+      status-field-id:
+        required: false
+        type: string
+        default: ""
+      status-option-id:
+        required: false
+        type: string
+        default: ""
+
+jobs:
+  triage:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      contents: read
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      REPO: ${{ github.repository }}
+      APPLY_LABEL: ${{ inputs.apply-label }}
+      REASSIGN_TO: ${{ inputs.reassign-to }}
+      SKIP_LABELS: ${{ inputs.skip-labels-regex }}
+      PROJECT_ID: ${{ inputs.project-id }}
+      STATUS_FIELD_ID: ${{ inputs.status-field-id }}
+      STATUS_OPTION_ID: ${{ inputs.status-option-id }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.after_sha }}
+
+      - name: Collect issue numbers
+        id: collect
+        shell: bash
+        run: |
+          BEFORE="${{ inputs.before_sha }}"
+          AFTER="${{ inputs.after_sha }}"
+          if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            RANGE="$AFTER"
+          else
+            RANGE="${BEFORE}..${AFTER}"
+          fi
+          ISSUES=$(git log "$RANGE" --pretty=format:"%s %b" 2>/dev/null \
+            | grep -oiE '(closes?|fixes?|resolves?)\s+#[0-9]+|#[0-9]+' \
+            | grep -oE '[0-9]+' | sort -un || true)
+          if [ -z "$ISSUES" ]; then
+            echo "issues=" >> "$GITHUB_OUTPUT"
+          else
+            echo "issues=$(echo "$ISSUES" | tr '\n' ' ' | xargs)" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Process issues
+        if: steps.collect.outputs.issues != ''
+        shell: bash
+        run: |
+          for N in ${{ steps.collect.outputs.issues }}; do
+            STATE=$(gh api "repos/${REPO}/issues/${N}" --jq '.state' 2>/dev/null || echo "missing")
+            [ "$STATE" != "open" ] && { echo "skip #${N} state=$STATE"; continue; }
+
+            LABELS=$(gh api "repos/${REPO}/issues/${N}" --jq '[.labels[].name] | join(",")' 2>/dev/null || echo "")
+            IS_SKIP="false"
+            if echo "$LABELS" | grep -qiE "(^|,)(${SKIP_LABELS})(,|$)"; then IS_SKIP="true"; fi
+
+            if [ -n "$REASSIGN_TO" ] && [ "$IS_SKIP" != "true" ]; then
+              gh api --method PATCH "repos/${REPO}/issues/${N}" -f "assignees[]=${REASSIGN_TO}" --silent \
+                && echo "#${N}: reassigned to ${REASSIGN_TO}"
+            fi
+
+            if [ -n "$APPLY_LABEL" ]; then
+              gh api --method POST "repos/${REPO}/issues/${N}/labels" -f "labels[]=${APPLY_LABEL}" --silent \
+                && echo "#${N}: labeled ${APPLY_LABEL}"
+            fi
+
+            if [ -n "$PROJECT_ID" ] && [ -n "$STATUS_FIELD_ID" ] && [ -n "$STATUS_OPTION_ID" ]; then
+              ITEM_ID=$(gh api graphql -f query="
+                {
+                  repository(owner: \"$(echo $REPO | cut -d/ -f1)\", name: \"$(echo $REPO | cut -d/ -f2)\") {
+                    issue(number: ${N}) {
+                      projectItems(first: 10) { nodes { id project { id } } }
+                    }
+                  }
+                }" --jq ".data.repository.issue.projectItems.nodes[] | select(.project.id == \"${PROJECT_ID}\") | .id" 2>/dev/null || echo "")
+              if [ -n "$ITEM_ID" ]; then
+                gh api graphql -f query="
+                  mutation {
+                    updateProjectV2ItemFieldValue(input: {
+                      projectId: \"${PROJECT_ID}\"
+                      itemId: \"${ITEM_ID}\"
+                      fieldId: \"${STATUS_FIELD_ID}\"
+                      value: { singleSelectOptionId: \"${STATUS_OPTION_ID}\" }
+                    }) { projectV2Item { id } }
+                  }" --silent && echo "#${N}: moved on project board"
+              fi
+            fi
+          done

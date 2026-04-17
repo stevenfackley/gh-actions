@@ -1,0 +1,166 @@
+name: CI (Astro + Postgres)
+
+on:
+  workflow_call:
+    inputs:
+      project-name:
+        required: true
+        type: string
+      node-version:
+        required: false
+        type: string
+        default: "22"
+      workspace:
+        required: false
+        type: string
+        default: "apps/site"
+      run-e2e:
+        required: false
+        type: boolean
+        default: true
+      db-push-cmd:
+        description: Command to apply schema (e.g. npx drizzle-kit push --force).
+        required: false
+        type: string
+        default: "npx drizzle-kit push --force"
+      build-cmd:
+        required: false
+        type: string
+        default: "npm run build"
+      server-entry:
+        required: false
+        type: string
+        default: "./dist/server/entry.mjs"
+      health-path:
+        required: false
+        type: string
+        default: "/api/health"
+      port:
+        required: false
+        type: string
+        default: "3000"
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+      - run: npm install --no-audit --no-fund --no-package-lock
+      - name: Unit tests
+        run: |
+          if [ -n "${{ inputs.workspace }}" ]; then
+            npm run test:unit -w ${{ inputs.workspace }}
+          else
+            npm run test:unit
+          fi
+
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+      - run: npm install --no-audit --no-fund --no-package-lock
+      - name: Integration tests
+        run: |
+          if [ -n "${{ inputs.workspace }}" ]; then
+            npm run test:integration -w ${{ inputs.workspace }}
+          else
+            npm run test:integration
+          fi
+
+  e2e-tests:
+    name: E2E Tests
+    needs: [unit-tests, integration-tests]
+    runs-on: ubuntu-latest
+    if: inputs.run-e2e
+    timeout-minutes: 20
+    env:
+      DATABASE_URL: "postgresql://testuser:testpassword@localhost:5432/e2etest"
+      BETTER_AUTH_SECRET: "ci-e2e-test-secret-not-for-production-00000"
+      BETTER_AUTH_URL: "http://127.0.0.1:${{ inputs.port }}"
+      NODE_ENV: "test"
+      CI: "true"
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: testuser
+          POSTGRES_PASSWORD: testpassword
+          POSTGRES_DB: e2etest
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+      - run: npm install --no-audit --no-fund --no-package-lock
+
+      - name: Apply database schema
+        working-directory: ${{ inputs.workspace }}
+        run: ${{ inputs.db-push-cmd }}
+
+      - name: Install Playwright browsers
+        run: npx playwright install-deps chromium && npx playwright install chromium
+
+      - name: Build
+        run: ${{ inputs.build-cmd }}
+        env:
+          NODE_ENV: production
+
+      - name: Start production server
+        working-directory: ${{ inputs.workspace }}
+        run: node ${{ inputs.server-entry }} > /tmp/server.log 2>&1 &
+        env:
+          NODE_ENV: production
+          PORT: ${{ inputs.port }}
+          HOST: "127.0.0.1"
+
+      - name: Wait for server
+        run: |
+          for i in $(seq 1 60); do
+            HTTP=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 http://127.0.0.1:${{ inputs.port }}${{ inputs.health-path }} || echo "000")
+            if [ "$HTTP" = "200" ]; then echo "healthy"; exit 0; fi
+            echo "attempt $i/60: HTTP $HTTP"
+            sleep 2
+          done
+          echo "server not healthy"
+          cat /tmp/server.log
+          exit 1
+
+      - name: E2E tests
+        run: |
+          if [ -n "${{ inputs.workspace }}" ]; then
+            npm run test:e2e -w ${{ inputs.workspace }}
+          else
+            npm run test:e2e
+          fi
+        env:
+          BASE_URL: "http://127.0.0.1:${{ inputs.port }}"
+
+      - name: Server logs on failure
+        if: failure()
+        run: tail -n 200 /tmp/server.log || true
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.project-name }}-playwright-report
+          path: ${{ inputs.workspace }}/playwright-report/
+          retention-days: 7

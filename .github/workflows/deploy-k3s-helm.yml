@@ -1,0 +1,104 @@
+name: Deploy (K3s via Helm)
+
+# Extracted from p1-opshub/.github/workflows/deploy.yml + deploy-prod.yml.
+# Assumes a self-hosted runner on the cluster control plane with:
+#   - docker login to GHCR already configured (or secrets.GITHUB_TOKEN available)
+#   - ~/deploy-*.sh helm wrapper installed
+#   - local-registry:30500 reachable
+
+on:
+  workflow_call:
+    inputs:
+      registry:
+        required: false
+        type: string
+        default: "ghcr.io"
+      image-name:
+        description: GHCR image name (e.g. owner/repo-api).
+        required: true
+        type: string
+      short-sha:
+        description: 8-char short SHA (the :sha-<short> tag already pushed to GHCR).
+        required: true
+        type: string
+      local-registry:
+        required: false
+        type: string
+        default: "local-registry:30500"
+      local-image-name:
+        description: Image name in the local registry (often short unprefixed name).
+        required: true
+        type: string
+      helm-script:
+        description: Path of the Helm wrapper (e.g. ~/deploy-p1.sh).
+        required: true
+        type: string
+      helm-set-key:
+        description: Helm --set key (e.g. api.image).
+        required: true
+        type: string
+      deployment-name:
+        description: k8s Deployment name to watch for rollout.
+        required: true
+        type: string
+      namespace:
+        required: true
+        type: string
+      runner-label:
+        required: false
+        type: string
+        default: "self-hosted"
+      environment:
+        required: false
+        type: string
+        default: "test"
+      promote-latest:
+        required: false
+        type: boolean
+        default: true
+
+jobs:
+  deploy:
+    runs-on: ${{ inputs.runner-label }}
+    environment: ${{ inputs.environment }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ inputs.registry }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Sync image to local cluster registry
+        env:
+          SHORT_SHA: ${{ inputs.short-sha }}
+          REG: ${{ inputs.registry }}
+          IMAGE: ${{ inputs.image-name }}
+          LREG: ${{ inputs.local-registry }}
+          LIMAGE: ${{ inputs.local-image-name }}
+        run: |
+          set -euo pipefail
+          docker pull "$REG/$IMAGE:sha-$SHORT_SHA"
+          docker tag  "$REG/$IMAGE:sha-$SHORT_SHA" "$LREG/$LIMAGE:sha-$SHORT_SHA"
+          docker push "$LREG/$LIMAGE:sha-$SHORT_SHA"
+          if [ "${{ inputs.promote-latest }}" = "true" ]; then
+            docker tag  "$LREG/$LIMAGE:sha-$SHORT_SHA" "$LREG/$LIMAGE:latest"
+            docker push "$LREG/$LIMAGE:latest"
+          fi
+
+      - name: Helm upgrade
+        env:
+          SHORT_SHA: ${{ inputs.short-sha }}
+          LREG: ${{ inputs.local-registry }}
+          LIMAGE: ${{ inputs.local-image-name }}
+        run: |
+          ${{ inputs.helm-script }} \
+            --set ${{ inputs.helm-set-key }}=$LREG/$LIMAGE:sha-$SHORT_SHA
+
+      - name: Verify rollout
+        run: |
+          kubectl rollout status deployment/${{ inputs.deployment-name }} -n ${{ inputs.namespace }} --timeout=120s || true
+          echo "--- Pods ---"
+          kubectl get pods -n ${{ inputs.namespace }}
