@@ -51,36 +51,74 @@ jobs:
           --health-retries 5
     steps:
       - uses: actions/checkout@v6
+
+      - name: Detect package manager
+        id: pm
+        run: |
+          if [ -f pnpm-lock.yaml ]; then
+            echo "pm=pnpm" >> "$GITHUB_OUTPUT"
+          elif [ -f yarn.lock ]; then
+            echo "pm=yarn" >> "$GITHUB_OUTPUT"
+          else
+            echo "pm=npm" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: pnpm/action-setup@v4
+        if: steps.pm.outputs.pm == 'pnpm'
+
       - uses: actions/setup-node@v6
         with:
           node-version: ${{ inputs.node-version }}
-          cache: "npm"
+          cache: ${{ steps.pm.outputs.pm }}
 
       - name: Install
-        run: npm ci
+        run: |
+          case "${{ steps.pm.outputs.pm }}" in
+            pnpm) pnpm install --frozen-lockfile ;;
+            yarn) yarn install --frozen-lockfile ;;
+            *)    npm ci ;;
+          esac
 
       - name: Lint
         run: |
-          if [ -n "${{ inputs.workspace }}" ]; then
-            npm run lint -w ${{ inputs.workspace }}
+          PM=${{ steps.pm.outputs.pm }}
+          WS="${{ inputs.workspace }}"
+          if [ -n "$WS" ]; then
+            case "$PM" in
+              pnpm) pnpm --filter "$WS" lint ;;
+              yarn) yarn workspace "$WS" lint ;;
+              *)    npm run lint -w "$WS" ;;
+            esac
           else
-            npm run lint
+            $PM run lint
           fi
 
       - name: Typecheck
         run: |
-          if [ -n "${{ inputs.workspace }}" ]; then
-            npm run typecheck -w ${{ inputs.workspace }} 2>/dev/null || npx tsc --noEmit
+          PM=${{ steps.pm.outputs.pm }}
+          WS="${{ inputs.workspace }}"
+          if [ -n "$WS" ]; then
+            case "$PM" in
+              pnpm) pnpm --filter "$WS" typecheck 2>/dev/null || npx tsc --noEmit ;;
+              yarn) yarn workspace "$WS" typecheck 2>/dev/null || npx tsc --noEmit ;;
+              *)    npm run typecheck -w "$WS" 2>/dev/null || npx tsc --noEmit ;;
+            esac
           else
-            npm run typecheck 2>/dev/null || npx tsc --noEmit
+            $PM run typecheck 2>/dev/null || npx tsc --noEmit
           fi
 
       - name: Test
         run: |
-          if [ -n "${{ inputs.workspace }}" ]; then
-            npm run test -w ${{ inputs.workspace }}
+          PM=${{ steps.pm.outputs.pm }}
+          WS="${{ inputs.workspace }}"
+          if [ -n "$WS" ]; then
+            case "$PM" in
+              pnpm) pnpm --filter "$WS" test ;;
+              yarn) yarn workspace "$WS" test ;;
+              *)    npm run test -w "$WS" ;;
+            esac
           else
-            npm test
+            $PM test
           fi
         env:
           DATABASE_URL: "postgresql://testuser:testpassword@localhost:5432/test_db"
