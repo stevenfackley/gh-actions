@@ -63,7 +63,7 @@ jobs:
             echo "pm=npm" >> "$GITHUB_OUTPUT"
           fi
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         if: steps.pm.outputs.pm == 'pnpm'
 
       - uses: actions/setup-node@v6
