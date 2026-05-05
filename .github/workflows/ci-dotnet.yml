@@ -116,7 +116,7 @@ jobs:
         shell: bash
         run: |
           if [ "${{ inputs.treat-warnings-as-errors }}" = "true" ]; then
-            dotnet build ${{ needs.resolve-solution.outputs.solution }} --no-restore -c Release /p:TreatWarningsAsErrors=true
+            dotnet build ${{ needs.resolve-solution.outputs.solution }} --no-restore -c Release -p:TreatWarningsAsErrors=true
           else
             dotnet build ${{ needs.resolve-solution.outputs.solution }} --no-restore -c Release
           fi
@@ -214,4 +214,4 @@ jobs:
             ENTRY=$(find src -maxdepth 3 -name '*.csproj' | head -n1)
           fi
           echo "Publishing $ENTRY for ${{ inputs.aot-rid }}"
-          dotnet publish "$ENTRY" -c Release -r ${{ inputs.aot-rid }} /p:PublishAot=true /p:StripSymbols=true $CFG
+          dotnet publish "$ENTRY" -c Release -r ${{ inputs.aot-rid }} -p:PublishAot=true -p:StripSymbols=true $CFG
