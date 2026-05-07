@@ -1,0 +1,65 @@
+###############################################################################
+# Recommended .editorconfig for consumers of stevenfackley/gh-actions ci-dotnet
+#
+# Drop this file at the root of any .NET repo that consumes ci-dotnet.yml.
+# It tames the three TreatWarningsAsErrors classes that have bitten consumers:
+#
+#   1. CA2007 (don't ConfigureAwait in tests; the codefix mangles `await using`)
+#   2. IDE0005 (unused using directives surface differently per TFM)
+#   3. dotnet format whitespace (Dependabot bumps that retouch Program.cs flip
+#      whitespace under TWAE)
+#
+# History: each class hit the workspace once between 2026-04-29 and 2026-05-06
+# (axon-main, OmniSift, undertow-engine, GhostCrab). See
+# `Obsidian Vault/Resources/CI patterns & gotchas.md` for full incident notes.
+###############################################################################
+
+root = true
+
+[*]
+indent_style = space
+indent_size = 4
+end_of_line = lf
+charset = utf-8
+trim_trailing_whitespace = true
+insert_final_newline = true
+
+[*.{csproj,props,targets,xml,yml,yaml,json}]
+indent_size = 2
+
+[*.cs]
+# IDE0005 — unused using directives. Multi-target builds expose these
+# differently per TFM; promoting to error (default under TWAE) creates
+# false positives whenever a using is needed for one TFM but not all.
+# Demote to suggestion. Real cleanup is best handled via `dotnet format`.
+dotnet_diagnostic.IDE0005.severity = suggestion
+
+# CA2007 — Consider calling ConfigureAwait. ASP.NET Core has no
+# SynchronizationContext, so this rule produces noise without value.
+# Keep at warning so it's visible in IDE but doesn't fail CI.
+dotnet_diagnostic.CA2007.severity = warning
+
+[**/tests/**.cs]
+# CA2007 must be off in tests entirely — xUnit1030 forbids ConfigureAwait
+# in test methods (it bypasses parallelization). The two rules together
+# create a contradiction that can't be satisfied.
+dotnet_diagnostic.CA2007.severity = none
+
+# Tests often have wider unused-using surface as fixtures get added/removed.
+dotnet_diagnostic.IDE0005.severity = none
+
+###############################################################################
+# Notes for adopters
+#
+# - This file is a *recommended baseline*, not a mandate. Consumer repos
+#   may tighten any rule (e.g. promote IDE0005 back to error if the codebase
+#   has clean usings discipline).
+#
+# - The CI format check (`dotnet format --verify-no-changes`) does NOT use
+#   .editorconfig severity — it always normalizes whitespace. To keep CI
+#   green after a Dependabot bump that retouches Program.cs, run
+#   `dotnet format` locally before merging. Local pre-commit hook also works.
+#
+# - For repos that genuinely don't want these defaults, just don't copy this
+#   file — the workflow doesn't require it.
+###############################################################################
