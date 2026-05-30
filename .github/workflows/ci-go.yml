@@ -1,0 +1,94 @@
+name: CI (Go)
+
+on:
+  workflow_call:
+    inputs:
+      project-name:
+        description: Project name; used for artifact/log context.
+        required: true
+        type: string
+      go-version:
+        required: false
+        type: string
+        default: "1.25"
+      working-directory:
+        description: Directory containing go.mod (for repos where Go is not at the repo root).
+        required: false
+        type: string
+        default: "."
+      run-postgres:
+        description: Start a Postgres 16 service container for integration tests.
+        required: false
+        type: boolean
+        default: false
+      test-args:
+        description: Arguments passed to `go test`.
+        required: false
+        type: string
+        default: "-race -shuffle=on -cover ./..."
+      verify-tidy:
+        description: Run `go mod tidy` and fail if it produces a diff.
+        required: false
+        type: boolean
+        default: true
+      govulncheck:
+        description: Run golang.org/x/vuln/cmd/govulncheck after tests.
+        required: false
+        type: boolean
+        default: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  lint-test:
+    name: Lint & Test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    services:
+      postgres:
+        image: ${{ inputs.run-postgres && 'postgres:16' || '' }}
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: test_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: ${{ inputs.go-version }}
+          cache-dependency-path: ${{ inputs.working-directory }}/go.sum
+
+      - name: Verify module files
+        if: inputs.verify-tidy
+        run: |
+          go mod tidy
+          git diff --exit-code
+
+      - name: Check formatting
+        run: test -z "$(gofmt -l .)"
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test ${{ inputs.test-args }}
+        env:
+          DATABASE_URL: "postgresql://test:test@localhost:5432/test_db"
+
+      - name: govulncheck
+        if: inputs.govulncheck
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...

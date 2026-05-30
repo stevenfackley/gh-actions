@@ -1,0 +1,135 @@
+name: CI (Gradle)
+
+on:
+  workflow_call:
+    inputs:
+      project-name:
+        description: Project name; used for artifact names.
+        required: true
+        type: string
+      runs-on:
+        description: >-
+          Runner label(s) as a JSON array, e.g. '["ubuntu-latest"]' or
+          '["self-hosted","macOS","ARM64"]'.
+        required: false
+        type: string
+        default: '["ubuntu-latest"]'
+      java-version:
+        required: false
+        type: string
+        default: "17"
+      test-task:
+        description: Gradle task that runs unit tests (e.g. test, testDebugUnitTest).
+        required: false
+        type: string
+        default: "test"
+      run-lint:
+        description: Run the `lint` Gradle task (Android Lint).
+        required: false
+        type: boolean
+        default: false
+      run-detekt:
+        description: Run the `detekt` Gradle task.
+        required: false
+        type: boolean
+        default: false
+      extra-gradle-args:
+        description: Args appended to every Gradle invocation (e.g. --no-configuration-cache).
+        required: false
+        type: string
+        default: ""
+      report-path:
+        description: Directory holding Gradle reports, uploaded as an artifact.
+        required: false
+        type: string
+        default: "build/reports"
+      build-release:
+        description: >-
+          Build a signed Android release bundle. Requires keystore secrets
+          (KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_ALIAS, KEY_PASSWORD) via
+          `secrets: inherit` from the caller.
+        required: false
+        type: boolean
+        default: false
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  test:
+    name: Unit Tests
+    runs-on: ${{ fromJSON(inputs.runs-on) }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up JDK ${{ inputs.java-version }}
+        uses: actions/setup-java@v5
+        with:
+          java-version: ${{ inputs.java-version }}
+          distribution: temurin
+          cache: gradle
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Unit tests
+        run: ./gradlew ${{ inputs.test-task }} ${{ inputs.extra-gradle-args }}
+
+      - name: Lint
+        if: inputs.run-lint
+        run: ./gradlew lint ${{ inputs.extra-gradle-args }}
+
+      - name: Detekt
+        if: inputs.run-detekt
+        run: ./gradlew detekt ${{ inputs.extra-gradle-args }}
+
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ inputs.project-name }}-reports
+          path: ${{ inputs.report-path }}
+          retention-days: 7
+
+  release-build:
+    name: Release AAB (smoke build)
+    runs-on: ${{ fromJSON(inputs.runs-on) }}
+    if: inputs.build-release
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up JDK ${{ inputs.java-version }}
+        uses: actions/setup-java@v5
+        with:
+          java-version: ${{ inputs.java-version }}
+          distribution: temurin
+          cache: gradle
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Decode keystore
+        id: signing
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 --decode > "$GITHUB_WORKSPACE/release.jks"
+            echo "keystore_path=$GITHUB_WORKSPACE/release.jks" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build release bundle
+        env:
+          KEYSTORE_PATH: ${{ steps.signing.outputs.keystore_path }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: ./gradlew bundleRelease ${{ inputs.extra-gradle-args }}
+
+      - name: Upload AAB
+        if: steps.signing.outputs.keystore_path != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ inputs.project-name }}-release-aab
+          path: app/build/outputs/bundle/release/app-release.aab
+          retention-days: 14
