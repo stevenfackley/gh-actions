@@ -127,7 +127,8 @@ jobs:
           ConnectionStrings__PostgreSQL: "Host=localhost;Port=5432;Database=test_db;Username=test;Password=test"
 
       - name: Upload test results
-        if: always()
+        if: failure()
+        continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
           name: ${{ inputs.project-name }}-test-results
@@ -135,7 +136,8 @@ jobs:
           retention-days: 7
 
       - name: Upload coverage
-        if: always()
+        if: failure()
+        continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
           name: ${{ inputs.project-name }}-coverage
