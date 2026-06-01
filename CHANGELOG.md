@@ -2,6 +2,14 @@
 
 All notable changes to the reusable workflows. Tags follow `v<MAJOR>`.
 
+## [v1] — 2026-05-31 (re-tagged)
+
+### Fixed
+- `ci-astro.yml`: postgres service healthcheck now passes `-U testuser -d e2etest`
+  to `pg_isready`. Without those flags, `pg_isready` defaulted to the runner's
+  OS user (root), repeatedly logged `FATAL: role "root" does not exist`, and
+  eventually failed the service health gate — blocking the entire E2E job.
+
 ## [v1] — 2026-04-16
 
 ### Added
