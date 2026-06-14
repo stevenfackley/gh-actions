@@ -67,6 +67,13 @@ jobs:
         if: steps.pm.outputs.pm == 'pnpm'
 
       - uses: actions/setup-node@v6
+        if: hashFiles('.nvmrc') != ''
+        with:
+          node-version-file: .nvmrc
+          cache: ${{ steps.pm.outputs.pm }}
+
+      - uses: actions/setup-node@v6
+        if: hashFiles('.nvmrc') == ''
         with:
           node-version: ${{ inputs.node-version }}
           cache: ${{ steps.pm.outputs.pm }}
