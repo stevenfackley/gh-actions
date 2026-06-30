@@ -2,6 +2,32 @@
 
 All notable changes to the reusable workflows. Tags follow `v<MAJOR>`.
 
+## [Unreleased]
+
+### Added
+- `wait-for-postgres` composite action: blocks until Postgres accepts
+  authenticated connections (probed from the runner host via `pg_isready`, with
+  `psql` and TCP fallbacks). Single shared home for the readiness logic that
+  failed in the v1 `ci-astro` incident. Not wired into the reusable `ci-*`
+  workflows — a reusable workflow can only reference a same-repo composite by a
+  hardcoded `@ref`, which would couple it to the floating `v1` tag — so consumer
+  workflows adopt it directly.
+
+### Changed
+- `r2-upload` composite finished for the upload path: per-file `Content-Type`
+  guessing, null-safe directory walk, source/prefix normalization, configurable
+  `wrangler-version`/`node-version`, `setup-node@v4` -> `@v6`. `delete-stale`
+  remains unimplemented and now **fails fast** (was a silent no-op) because a
+  reliable prune needs R2 S3-API credentials, not the Cloudflare API token.
+
+### Notes
+- The Postgres `services:` block (duplicated across `ci-dotnet`, `ci-go`,
+  `ci-node`, `ci-python`, `ci-astro`) was **not** de-duplicated: Actions does not
+  expand YAML anchors, composite actions cannot declare job-level `services:`,
+  and a nested reusable workflow's service runs on a separate runner. README now
+  documents the canonical stanza + intentional per-workflow variance. No `ci-*`
+  workflow behavior changed.
+
 ## [v1] — 2026-05-31 (re-tagged)
 
 ### Fixed

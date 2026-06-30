@@ -1,0 +1,87 @@
+name: Wait for Postgres
+description: >-
+  Block until a Postgres server is accepting authenticated connections for a
+  given user/database, probed from the runner host (the same vantage point a
+  test process uses to reach a service container via its published port).
+  Centralizes the readiness logic that otherwise has to be hand-rolled into each
+  CI workflow's service `--health-cmd` — the exact surface that broke in the v1
+  ci-astro incident (see CHANGELOG: bare `pg_isready` defaulted to the runner OS
+  user and failed the health gate).
+
+inputs:
+  host:
+    description: Postgres host as seen from the runner.
+    required: false
+    default: localhost
+  port:
+    description: Postgres port as seen from the runner.
+    required: false
+    default: "5432"
+  user:
+    description: >-
+      Role to probe. Matters: `pg_isready` without `-U` defaults to the runner
+      OS user (often root), which logs `FATAL: role "root" does not exist`.
+    required: true
+  database:
+    description: Database to probe.
+    required: true
+  password:
+    description: Password for the role. Only used by the `psql SELECT 1` fallback.
+    required: false
+    default: ""
+  timeout-seconds:
+    description: Give up after this many seconds.
+    required: false
+    default: "60"
+  interval-seconds:
+    description: Seconds to sleep between attempts.
+    required: false
+    default: "2"
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        PGHOST: ${{ inputs.host }}
+        PGPORT: ${{ inputs.port }}
+        PGUSER: ${{ inputs.user }}
+        PGDATABASE: ${{ inputs.database }}
+        PGPASSWORD: ${{ inputs.password }}
+        TIMEOUT: ${{ inputs.timeout-seconds }}
+        INTERVAL: ${{ inputs.interval-seconds }}
+      run: |
+        set -uo pipefail
+        have() { command -v "$1" >/dev/null 2>&1; }
+
+        # Pick the strongest probe the runner supports.
+        #   pg_isready : auth-aware readiness (preferred; preinstalled on ubuntu-latest)
+        #   psql       : SELECT 1, also auth-aware
+        #   /dev/tcp   : last-resort port-open check (not auth-aware)
+        probe() {
+          if have pg_isready; then
+            pg_isready -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$PGDATABASE" >/dev/null 2>&1
+          elif have psql; then
+            psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$PGDATABASE" -tAc 'SELECT 1' >/dev/null 2>&1
+          else
+            (exec 3<>"/dev/tcp/$PGHOST/$PGPORT") 2>/dev/null
+          fi
+        }
+
+        if ! have pg_isready && ! have psql; then
+          echo "::warning::Neither pg_isready nor psql found; falling back to a TCP port-open check (not auth-aware)."
+        fi
+
+        deadline=$(( $(date +%s) + TIMEOUT ))
+        attempt=0
+        until probe; do
+          attempt=$((attempt + 1))
+          if [ "$(date +%s)" -ge "$deadline" ]; then
+            echo "::error::Postgres at $PGHOST:$PGPORT (user=$PGUSER db=$PGDATABASE) not ready after ${TIMEOUT}s."
+            have pg_isready && pg_isready -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$PGDATABASE" || true
+            exit 1
+          fi
+          echo "attempt $attempt: not ready yet, retrying in ${INTERVAL}s..."
+          sleep "$INTERVAL"
+        done
+        echo "Postgres at $PGHOST:$PGPORT is ready (user=$PGUSER db=$PGDATABASE)."

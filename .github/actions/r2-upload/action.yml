@@ -1,33 +1,50 @@
 name: Cloudflare R2 Upload
-description: Sync a local directory to an R2 bucket via wrangler. v2 stub — wired but not exercised until a project needs it.
+description: >-
+  Sync a local directory to a Cloudflare R2 bucket via wrangler. Relative paths
+  under <source> become object keys (optionally under <prefix>), each uploaded
+  with a guessed Content-Type. Authenticates with a Cloudflare API token scoped
+  R2:Edit on the target bucket. Upload/overwrite only — see `delete-stale`.
 
 inputs:
   bucket:
     description: R2 bucket name.
     required: true
   source:
-    description: Local directory to sync.
+    description: Local directory whose contents are uploaded.
     required: true
   prefix:
-    description: Key prefix inside the bucket.
+    description: Key prefix inside the bucket (leading/trailing slashes are trimmed).
     required: false
     default: ""
   account-id:
+    description: Cloudflare account ID that owns the bucket.
     required: true
   api-token:
     description: Cloudflare API token with R2:Edit on the target bucket.
     required: true
   delete-stale:
-    description: Remove remote keys that no longer exist locally.
+    description: >-
+      Remove remote keys under <prefix> that no longer exist locally.
+      NOT IMPLEMENTED — see the TODO in this action. With the default ("false")
+      the action only uploads/overwrites and never deletes. Setting it to "true"
+      fails fast rather than silently not deleting.
     required: false
     default: "false"
+  wrangler-version:
+    description: Major wrangler version to install (e.g. "4").
+    required: false
+    default: "4"
+  node-version:
+    description: Node.js version used to run wrangler.
+    required: false
+    default: "22"
 
 runs:
   using: composite
   steps:
-    - uses: actions/setup-node@v4
+    - uses: actions/setup-node@v6
       with:
-        node-version: "22"
+        node-version: ${{ inputs.node-version }}
 
     - shell: bash
       env:
@@ -37,21 +54,52 @@ runs:
         SRC: ${{ inputs.source }}
         PREFIX: ${{ inputs.prefix }}
         DELETE: ${{ inputs.delete-stale }}
+        WRANGLER_VERSION: ${{ inputs.wrangler-version }}
       run: |
         set -euo pipefail
-        npm i -g wrangler@4
+
+        if [ "$DELETE" = "true" ]; then
+          # TODO(r2-upload): prune remote keys that no longer exist locally.
+          # This is blocked on a credential/approach decision, not effort:
+          #   * wrangler exposes `r2 object {put,get,delete}` but no stable
+          #     prefix LIST, so we cannot diff remote-vs-local to know what to
+          #     delete using the Cloudflare API token this action accepts.
+          #   * A reliable sync-with-delete wants the R2 S3-compatible API
+          #     (ListObjectsV2 + DeleteObjects), which needs R2 *Access Key ID /
+          #     Secret Access Key* — a DIFFERENT secret than the API token here.
+          #     Provisioning that secret in every consumer repo is a
+          #     platform-owner decision, so it is intentionally left out.
+          # Fail loud: a caller that asked to delete stale keys must not be told
+          # it happened when it did not.
+          echo "::error::delete-stale=true is not implemented (needs R2 S3 API credentials). See action.yml TODO."
+          exit 1
+        fi
+
+        # Normalize source (strip one trailing slash) and require a directory.
+        SRC="${SRC%/}"
         if [ ! -d "$SRC" ]; then
           echo "::error::Source directory not found: $SRC"
           exit 1
         fi
-        EXTRA=""
-        [ "$DELETE" = "true" ] && EXTRA="--delete"
-        # wrangler r2 object put does not do dir-sync natively; walk files.
-        find "$SRC" -type f | while read -r f; do
-          REL="${f#$SRC/}"
-          KEY="${PREFIX:+$PREFIX/}$REL"
-          wrangler r2 object put "$BUCKET/$KEY" --file "$f" --remote
-        done
-        if [ -n "$EXTRA" ]; then
-          echo "Note: --delete-stale requested; implement via list+diff if needed."
-        fi
+
+        # Trim leading/trailing slashes off the prefix.
+        PREFIX="${PREFIX#/}"
+        PREFIX="${PREFIX%/}"
+
+        npm install -g "wrangler@${WRANGLER_VERSION}"
+
+        count=0
+        # -print0 / read -d '' is null-safe for paths with spaces or newlines.
+        while IFS= read -r -d '' f; do
+          REL="${f#"$SRC"/}"
+          if [ -n "$PREFIX" ]; then KEY="$PREFIX/$REL"; else KEY="$REL"; fi
+          CT="$(file --brief --mime-type "$f" 2>/dev/null || echo application/octet-stream)"
+          echo "-> $KEY ($CT)"
+          wrangler r2 object put "$BUCKET/$KEY" \
+            --file "$f" \
+            --content-type "$CT" \
+            --remote
+          count=$((count + 1))
+        done < <(find "$SRC" -type f -print0)
+
+        echo "Uploaded $count object(s) to r2://$BUCKET${PREFIX:+/$PREFIX}."
