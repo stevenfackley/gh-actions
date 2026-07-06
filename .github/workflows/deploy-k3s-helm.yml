@@ -95,7 +95,7 @@ jobs:
           LIMAGE: ${{ inputs.local-image-name }}
         run: |
           ${{ inputs.helm-script }} \
-            --set ${{ inputs.helm-set-key }}=$LREG/$LIMAGE:sha-$SHORT_SHA
+            --set "${{ inputs.helm-set-key }}=$LREG/$LIMAGE:sha-$SHORT_SHA"
 
       - name: Verify rollout
         run: |

@@ -109,7 +109,7 @@ jobs:
             if [ -n "$PROJECT_ID" ] && [ -n "$STATUS_FIELD_ID" ] && [ -n "$STATUS_OPTION_ID" ]; then
               ITEM_ID=$(gh api graphql -f query="
                 {
-                  repository(owner: \"$(echo $REPO | cut -d/ -f1)\", name: \"$(echo $REPO | cut -d/ -f2)\") {
+                  repository(owner: \"$(echo "$REPO" | cut -d/ -f1)\", name: \"$(echo "$REPO" | cut -d/ -f2)\") {
                     issue(number: ${N}) {
                       projectItems(first: 10) { nodes { id project { id } } }
                     }
