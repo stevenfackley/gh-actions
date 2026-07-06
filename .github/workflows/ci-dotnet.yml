@@ -104,9 +104,9 @@ jobs:
       - name: Restore
         shell: bash
         run: |
-          CFG=""
-          [ -n "${{ inputs.nuget-config-path }}" ] && CFG="--configfile ${{ inputs.nuget-config-path }}"
-          dotnet restore ${{ needs.resolve-solution.outputs.solution }} $CFG
+          RESTORE_ARGS=()
+          [ -n "${{ inputs.nuget-config-path }}" ] && RESTORE_ARGS+=(--configfile "${{ inputs.nuget-config-path }}")
+          dotnet restore "${{ needs.resolve-solution.outputs.solution }}" "${RESTORE_ARGS[@]}"
 
       - name: Format (verify)
         continue-on-error: true
@@ -162,9 +162,9 @@ jobs:
       - name: Restore
         shell: bash
         run: |
-          CFG=""
-          [ -n "${{ inputs.nuget-config-path }}" ] && CFG="--configfile ${{ inputs.nuget-config-path }}"
-          dotnet restore ${{ needs.resolve-solution.outputs.solution }} $CFG
+          RESTORE_ARGS=()
+          [ -n "${{ inputs.nuget-config-path }}" ] && RESTORE_ARGS+=(--configfile "${{ inputs.nuget-config-path }}")
+          dotnet restore "${{ needs.resolve-solution.outputs.solution }}" "${RESTORE_ARGS[@]}"
 
       - name: Check for known vulnerabilities
         run: dotnet list ${{ needs.resolve-solution.outputs.solution }} package --vulnerable --include-transitive
@@ -209,11 +209,11 @@ jobs:
       - name: AOT publish
         shell: bash
         run: |
-          CFG=""
-          [ -n "${{ inputs.nuget-config-path }}" ] && CFG="--configfile ${{ inputs.nuget-config-path }}"
-          ENTRY=$(find src -maxdepth 3 -name '*.csproj' | xargs grep -l '<OutputType>Exe</OutputType>' 2>/dev/null | head -n1 || true)
+          PUBLISH_ARGS=()
+          [ -n "${{ inputs.nuget-config-path }}" ] && PUBLISH_ARGS+=(--configfile "${{ inputs.nuget-config-path }}")
+          ENTRY=$(find src -maxdepth 3 -name '*.csproj' -exec grep -l '<OutputType>Exe</OutputType>' {} + 2>/dev/null | head -n1 || true)
           if [ -z "$ENTRY" ]; then
             ENTRY=$(find src -maxdepth 3 -name '*.csproj' | head -n1)
           fi
           echo "Publishing $ENTRY for ${{ inputs.aot-rid }}"
-          dotnet publish "$ENTRY" -c Release -r ${{ inputs.aot-rid }} -p:PublishAot=true -p:StripSymbols=true $CFG
+          dotnet publish "$ENTRY" -c Release -r "${{ inputs.aot-rid }}" -p:PublishAot=true -p:StripSymbols=true "${PUBLISH_ARGS[@]}"
