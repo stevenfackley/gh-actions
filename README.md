@@ -91,7 +91,7 @@ connection string, so do **not** blindly unify):
 |----------|-------|-----------------|----|------------|--------------------|
 | `ci-dotnet` | `postgres:16` | `test` / `test` | `test_db` | `pg_isready` | no (`run-postgres`) |
 | `ci-go` | `postgres:16` | `test` / `test` | `test_db` | `pg_isready` | no (`run-postgres`) |
-| `ci-python` | `postgres:16` | `test` / `test` | `test_db` | `pg_isready` | no (`run-postgres`) |
+| `ci-python` | `postgres:16` (override: `postgres-image`) | `test` / `test` | `test_db` | `pg_isready` | no (`run-postgres`) |
 | `ci-node` | `postgres:16-alpine` | `testuser` / `testpassword` | `test_db` | `pg_isready` | no (`run-postgres`) |
 | `ci-astro` | `postgres:16-alpine` | `testuser` / `testpassword` | `e2etest` | `pg_isready -U testuser -d e2etest` | yes (E2E job) |
 

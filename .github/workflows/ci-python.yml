@@ -14,6 +14,11 @@ on:
         required: false
         type: boolean
         default: false
+      postgres-image:
+        description: Postgres service image (e.g. postgis/postgis:16-3.4). Only used when run-postgres is true.
+        required: false
+        type: string
+        default: "postgres:16"
       system-packages:
         description: apt-get packages to install (space-separated).
         required: false
@@ -33,7 +38,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: ${{ inputs.run-postgres && 'postgres:16' || '' }}
+        image: ${{ inputs.run-postgres && inputs.postgres-image || '' }}
         env:
           POSTGRES_USER: test
           POSTGRES_PASSWORD: test
