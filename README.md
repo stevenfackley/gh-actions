@@ -13,6 +13,7 @@ Shared CI/CD for `stevenfackley/*` repos. Pin to `@v1`. Breaking changes → `@v
 | `.github/workflows/deploy-ec2-ssh.yml` | EC2 via SSH + docker compose + health check | steveackleyorg |
 | `.github/workflows/deploy-k3s-helm.yml` | K3s via local-registry sync + Helm upgrade | p1-opshub |
 | `.github/workflows/secret-scan.yml` | grep for telemetry SDKs + AWS keys + PEM | axon-main |
+| `.github/workflows/tracker-guard.yml` | Cookie-setting tracker gate — keeps public sites banner-free | fleet cookie audit 2026-08-05 |
 | `.github/workflows/triage-issues.yml` | Move referenced issues to Ready For Test | p1-opshub |
 | `.github/workflows/release.yml` | Tag `YYYYMMDD_<Project>_Release` | new |
 
