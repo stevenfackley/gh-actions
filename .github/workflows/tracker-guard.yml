@@ -1,0 +1,92 @@
+name: Tracker Guard
+
+# Fails when a cookie-setting tracker (analytics SDK, ad/social pixel, cookie
+# embed) lands in a repo. Every public site currently ships zero non-essential
+# cookies (fleet audit 2026-08-05), so no site needs a cookie-consent banner.
+# A tracker added without consent gating would silently create that legal duty
+# (GDPR / ePrivacy) — this gate forces the decision to be conscious.
+#
+# Cookieless tools that stay banner-free and pass this gate by construction:
+# Plausible, Cloudflare Web Analytics, youtube-nocookie.com embeds. PostHog
+# configured with persistence "memory" is also cookieless — add it to
+# allow-regex once configured that way.
+
+on:
+  workflow_call:
+    inputs:
+      allow-regex:
+        description: >-
+          Extended regex; hit lines matching it are permitted. Use for
+          trackers that are consent-gated or verifiably cookieless.
+        required: false
+        type: string
+        default: ""
+      paths:
+        description: Space-separated pathspecs to scan.
+        required: false
+        type: string
+        default: "."
+      extra-excludes:
+        description: >-
+          Space-separated extra pathspec excludes,
+          e.g. ":(exclude,glob)corpus-source/**".
+        required: false
+        type: string
+        default: ""
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Cookie-setting tracker scan
+        shell: bash
+        env:
+          ALLOW: ${{ inputs.allow-regex }}
+          SCAN_PATHS: ${{ inputs.paths }}
+          EXTRA_EXCLUDES: ${{ inputs.extra-excludes }}
+        run: |
+          # Structural signatures only (script hosts, init calls) — a doc or
+          # blog post *mentioning* a tracker must not trip the gate.
+          TRACKERS='googletagmanager\.com|google-analytics\.com|gtag\(|connect\.facebook\.net|fbq\(|static\.hotjar\.com|clarity\.ms|cdn\.segment\.com|cdn\.mxpnl\.com|api-js\.mixpanel\.com|mixpanel\.init|cdn\.amplitude\.com|amplitude\.init|matomo\.js|_paq\.push|\.posthog\.com|posthog\.init|posthog-js|doubleclick\.net|googlesyndication\.com|adsbygoogle|px\.ads\.linkedin\.com|snap\.licdn\.com|analytics\.tiktok\.com|static\.ads-twitter\.com|platform\.twitter\.com/widgets|instagram\.com/embed|youtube\.com/embed|player\.vimeo\.com'
+          # Browser-side SDK packages (server-side SDKs set no browser cookies).
+          PACKAGES='"(posthog-js|mixpanel-browser|@amplitude/analytics-browser|amplitude-js|@segment/analytics-next|react-ga4?|@hotjar/browser|react-hotjar|@microsoft/clarity|vue-gtag|nuxt-gtag|@next/third-parties|gatsby-plugin-google-(analytics|gtag))"'
+
+          EXCLUDES=(
+            ':(exclude,glob)**/*.md'
+            ':(exclude,glob)**/*.mdx'
+            ':(exclude,glob)**/*.txt'
+            ':(exclude,glob)docs/**'
+            ':(exclude,glob).claude/**'
+            ':(exclude,glob).agents/**'
+            ':(exclude).env.example'
+            ':(exclude,glob)**/scan-secrets.ps1'
+            ':(exclude,glob)**/tests/**'
+            ':(exclude,glob)**/test/**'
+            ':(exclude,glob)**/__tests__/**'
+            ':(exclude,glob)**/fixtures/**'
+            ':(exclude,glob)**/playwright-report/**'
+            ':(exclude,glob)**/dist/**'
+            ':(exclude,glob)**/build/**'
+          )
+          read -r -a EXTRA <<< "$EXTRA_EXCLUDES"
+          read -r -a PATHSPEC <<< "$SCAN_PATHS"
+
+          HITS=$(git grep -nIE "$TRACKERS" -- "${PATHSPEC[@]}" "${EXCLUDES[@]}" "${EXTRA[@]}" 2>/dev/null || true)
+          PKG_HITS=$(git ls-files '*package.json' | xargs -r grep -nHE "$PACKAGES" 2>/dev/null || true)
+
+          if [ -n "$ALLOW" ]; then
+            HITS=$(printf '%s\n' "$HITS" | grep -vE "$ALLOW" || true)
+            PKG_HITS=$(printf '%s\n' "$PKG_HITS" | grep -vE "$ALLOW" || true)
+          fi
+
+          ALL=$(printf '%s\n%s\n' "$HITS" "$PKG_HITS" | sed '/^$/d')
+          if [ -n "$ALL" ]; then
+            echo "::error::Cookie-setting tracker detected. This repo ships banner-free (no cookie-consent dialog, fleet audit 2026-08-05). Before merging: use a cookieless alternative (Plausible, Cloudflare Web Analytics, youtube-nocookie, PostHog persistence:memory) OR add a consent manager that gates the tracker and pass the line via allow-regex."
+            printf '%s\n' "$ALL"
+            exit 1
+          fi
+          echo "No unapproved cookie-setting trackers found."
