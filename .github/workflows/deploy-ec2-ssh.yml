@@ -30,6 +30,15 @@ on:
         required: false
         type: string
         default: ""
+      ec2-host:
+        description: |
+          Host to SSH into, overriding the EC2_HOST secret when non-empty.
+          For instances without an Elastic IP the public address changes on
+          every stop/start, so a stored secret goes stale; such callers should
+          resolve the address in an earlier job and pass it here.
+        required: false
+        type: string
+        default: ""
       env-file-script:
         description: |
           Shell snippet to produce /etc/.env contents; stdin is the .env file.
@@ -66,7 +75,7 @@ jobs:
           CONTAINER_NAME: ${{ inputs.container-name }}
           DOTENV_CONTENT: ${{ secrets.DOTENV_CONTENT }}
         with:
-          host: ${{ secrets.EC2_HOST }}
+          host: ${{ inputs.ec2-host != '' && inputs.ec2-host || secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
           port: 22
