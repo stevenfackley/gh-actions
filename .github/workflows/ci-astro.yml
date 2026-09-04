@@ -3,6 +3,11 @@ name: CI (Astro + Postgres)
 on:
   workflow_call:
     inputs:
+      runs-on:
+        description: Runner label for the build/test jobs, e.g. ubuntu-latest or a self-hosted label.
+        required: false
+        type: string
+        default: ubuntu-latest
       project-name:
         required: true
         type: string
@@ -46,7 +51,7 @@ env:
 jobs:
   unit-tests:
     name: Unit Tests
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runs-on }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -63,7 +68,7 @@ jobs:
 
   integration-tests:
     name: Integration Tests
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runs-on }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -81,7 +86,7 @@ jobs:
   e2e-tests:
     name: E2E Tests
     needs: [unit-tests, integration-tests]
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runs-on }}
     if: inputs.run-e2e
     timeout-minutes: 20
     env:

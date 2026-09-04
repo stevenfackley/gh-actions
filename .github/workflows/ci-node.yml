@@ -3,6 +3,11 @@ name: CI (Node)
 on:
   workflow_call:
     inputs:
+      runs-on:
+        description: Runner label for the build/test jobs, e.g. ubuntu-latest or a self-hosted label.
+        required: false
+        type: string
+        default: ubuntu-latest
       project-name:
         required: true
         type: string
@@ -34,7 +39,7 @@ env:
 jobs:
   lint-typecheck-test:
     name: Lint / Typecheck / Test
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runs-on }}
     services:
       postgres:
         image: ${{ inputs.run-postgres && 'postgres:16-alpine' || '' }}

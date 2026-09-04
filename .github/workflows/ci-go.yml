@@ -3,6 +3,11 @@ name: CI (Go)
 on:
   workflow_call:
     inputs:
+      runs-on:
+        description: Runner label for the build/test jobs, e.g. ubuntu-latest or a self-hosted label.
+        required: false
+        type: string
+        default: ubuntu-latest
       project-name:
         description: Project name; used for artifact/log context.
         required: true
@@ -43,7 +48,7 @@ env:
 jobs:
   lint-test:
     name: Lint & Test
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runs-on }}
     defaults:
       run:
         working-directory: ${{ inputs.working-directory }}

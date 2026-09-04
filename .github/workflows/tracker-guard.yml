@@ -14,6 +14,11 @@ name: Tracker Guard
 on:
   workflow_call:
     inputs:
+      runs-on:
+        description: Runner label for the build/test jobs, e.g. ubuntu-latest or a self-hosted label.
+        required: false
+        type: string
+        default: ubuntu-latest
       allow-regex:
         description: >-
           Extended regex; hit lines matching it are permitted. Use for
@@ -36,7 +41,7 @@ on:
 
 jobs:
   scan:
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runs-on }}
     permissions:
       contents: read
     steps:
