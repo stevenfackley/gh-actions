@@ -4,7 +4,7 @@ on:
   workflow_call:
     inputs:
       runs-on:
-        description: Runner label for the build/test jobs, e.g. ubuntu-latest or a self-hosted label.
+        description: Runner label for every job in this workflow, e.g. ubuntu-latest or a self-hosted label.
         required: false
         type: string
         default: ubuntu-latest
@@ -137,7 +137,9 @@ jobs:
 
   docker:
     name: Docker Build Validation
-    runs-on: ubuntu-latest
+    # Follows the same runner as the test job. This is validation only (push: false), so a self-hosted
+    # arm64 runner builds it natively; the image that ships to production is built elsewhere.
+    runs-on: ${{ inputs.runs-on }}
     needs: lint-typecheck-test
     if: inputs.build-docker
     steps:
