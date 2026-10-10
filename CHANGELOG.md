@@ -4,6 +4,11 @@ All notable changes to the reusable workflows. Tags follow `v<MAJOR>`.
 
 ## Unreleased
 
+- `secret-scan`: the secret-shape scan was a no-op. It passed `inputs.paths` before `--`, so git read
+  them as revisions (`fatal: unable to resolve revision`) and `2>/dev/null || true` swallowed the
+  error; every consumer passed whatever was committed. Paths now go after `--`, and a git error
+  (exit status other than 0 or 1) fails the job with git's stderr instead of passing.
+
 - `ci-node`: the `Docker Build Validation` job now follows the `runs-on` input instead of being
   pinned to `ubuntu-latest`. It was the one job in the reusable lanes that ignored the input added
   in #30, so a private repo that routed its tests to a self-hosted runner still paid for hosted
