@@ -32,6 +32,14 @@ on:
         required: false
         type: string
         default: Dockerfile
+      cache-save:
+        description: >-
+          Save the package-manager cache after install (post-job upload). Default false = restore-only.
+          Leave false on self-hosted lanes (mini-linux): the cache dir is gigabytes and the upload over
+          Starlink stalls the single runner for 20-30 minutes. Hosted runners may opt in.
+        required: false
+        type: boolean
+        default: false
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
@@ -75,13 +83,31 @@ jobs:
         if: hashFiles('.nvmrc') != ''
         with:
           node-version-file: .nvmrc
-          cache: ${{ steps.pm.outputs.pm }}
 
       - uses: actions/setup-node@v7
         if: hashFiles('.nvmrc') == ''
         with:
           node-version: ${{ inputs.node-version }}
-          cache: ${{ steps.pm.outputs.pm }}
+
+      - name: Resolve cache config
+        id: cache
+        run: |
+          case "${{ steps.pm.outputs.pm }}" in
+            pnpm) echo "path=$(pnpm store path)" >> "$GITHUB_OUTPUT"; LOCK='**/pnpm-lock.yaml' ;;
+            yarn) echo "path=$(yarn cache dir)" >> "$GITHUB_OUTPUT"; LOCK='**/yarn.lock' ;;
+            *)    echo "path=$HOME/.npm" >> "$GITHUB_OUTPUT"; LOCK='**/package-lock.json' ;;
+          esac
+          echo "lock=$LOCK" >> "$GITHUB_OUTPUT"
+
+      # Restore-only by default: no post-job save step exists for actions/cache/restore.
+      - name: Restore package cache
+        id: cache-restore
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ steps.cache.outputs.path }}
+          key: node-cache-${{ runner.os }}-${{ runner.arch }}-${{ steps.pm.outputs.pm }}-${{ hashFiles(steps.cache.outputs.lock) }}
+          restore-keys: |
+            node-cache-${{ runner.os }}-${{ runner.arch }}-${{ steps.pm.outputs.pm }}-
 
       - name: Install
         run: |
@@ -90,6 +116,13 @@ jobs:
             yarn) yarn install --frozen-lockfile ;;
             *)    npm ci ;;
           esac
+
+      - name: Save package cache
+        if: inputs.cache-save && steps.cache-restore.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ steps.cache.outputs.path }}
+          key: node-cache-${{ runner.os }}-${{ runner.arch }}-${{ steps.pm.outputs.pm }}-${{ hashFiles(steps.cache.outputs.lock) }}
 
       - name: Lint
         run: |
