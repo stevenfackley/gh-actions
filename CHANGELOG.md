@@ -9,6 +9,10 @@ All notable changes to the reusable workflows. Tags follow `v<MAJOR>`.
   error; every consumer passed whatever was committed. Paths now go after `--`, and a git error
   (exit status other than 0 or 1) fails the job with git's stderr instead of passing.
 
+- `ci-node`: new `cache-save` input (boolean, default `false`). setup-node's built-in `cache:` is replaced by
+  `actions/cache/restore` (restore-only), so no post-job save runs by default. On `mini-linux` the post-job
+  upload of a ~1.8 GB npm cache over Starlink stalled the single runner for 20-30 minutes after all steps
+  had passed (haulcall #448 precedent). Set `cache-save: true` on hosted runners to re-enable saving.
 - `ci-node`: the `Docker Build Validation` job now follows the `runs-on` input instead of being
   pinned to `ubuntu-latest`. It was the one job in the reusable lanes that ignored the input added
   in #30, so a private repo that routed its tests to a self-hosted runner still paid for hosted

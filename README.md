@@ -47,6 +47,12 @@ jobs:
     secrets: inherit
 ```
 
+## ci-node cache input
+
+`ci-node` takes `cache-save` (boolean, default `false`). Default is restore-only package-manager caching
+(no post-job upload). Self-hosted lanes should leave it `false`: uploading the multi-GB cache over Starlink
+stalls the runner for 20-30 minutes. Hosted runners may set `cache-save: true` to warm the cache.
+
 ## Postgres in CI
 
 `ci-dotnet`, `ci-go`, `ci-node`, `ci-python`, and `ci-astro` each start Postgres
