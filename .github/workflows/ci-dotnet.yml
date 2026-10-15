@@ -17,6 +17,11 @@ on:
         required: false
         type: boolean
         default: false
+      postgres-image:
+        description: Image for the Postgres service when run-postgres is true (e.g. pgvector/pgvector:pg16).
+        required: false
+        type: string
+        default: "postgres:16"
       aot-rid:
         description: RID for AOT publish verification. Set empty to skip AOT.
         required: false
@@ -74,7 +79,7 @@ jobs:
     needs: resolve-solution
     services:
       postgres:
-        image: ${{ inputs.run-postgres && 'postgres:16' || '' }}
+        image: ${{ inputs.run-postgres && inputs.postgres-image || '' }}
         env:
           POSTGRES_USER: test
           POSTGRES_PASSWORD: test
