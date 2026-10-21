@@ -84,8 +84,11 @@ jobs:
           POSTGRES_USER: test
           POSTGRES_PASSWORD: test
           POSTGRES_DB: test_db
+        # Container port only: Docker picks a free host port, so two of these jobs on one
+        # self-hosted VM (mini-linux runs fairsquare, certavoice and qavren-db side by side)
+        # no longer collide on 5432 ("driver failed programming external connectivity").
         ports:
-          - 5432:5432
+          - 5432
         options: >-
           --health-cmd pg_isready
           --health-interval 10s
@@ -129,7 +132,9 @@ jobs:
       - name: Test
         run: dotnet test ${{ needs.resolve-solution.outputs.solution }} --no-build -c Release --logger "trx;LogFileName=test-results.trx" --collect:"XPlat Code Coverage"
         env:
-          ConnectionStrings__PostgreSQL: "Host=localhost;Port=5432;Database=test_db;Username=test;Password=test"
+          # The host port Docker chose for the service; empty when run-postgres is off, so a
+          # fixture that falls back to Testcontainers on an unset/blank value keeps doing so.
+          ConnectionStrings__PostgreSQL: ${{ inputs.run-postgres && format('Host=localhost;Port={0};Database=test_db;Username=test;Password=test', job.services.postgres.ports['5432']) || '' }}
 
       - name: Upload test results
         if: failure()
