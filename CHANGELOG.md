@@ -4,6 +4,11 @@ All notable changes to the reusable workflows. Tags follow `v<MAJOR>`.
 
 ## Unreleased
 
+- `deploy-k3s-helm`: removed. Its only consumer, p1-opshub, stopped deploying to K3s when that
+  cluster was decommissioned (2026-08-15; Proxmox + K3s in storage since 2026-07-05). No workflow in
+  any `stevenfackley/*` repo references it (`gh search code` + every local checkout). `v1` is not
+  moved by this change; the tag keeps pointing at a commit that still carries the file.
+
 - `secret-scan`: the secret-shape scan was a no-op. It passed `inputs.paths` before `--`, so git read
   them as revisions (`fatal: unable to resolve revision`) and `2>/dev/null || true` swallowed the
   error; every consumer passed whatever was committed. Paths now go after `--`, and a git error
