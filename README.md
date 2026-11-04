@@ -11,7 +11,6 @@ Shared CI/CD for `stevenfackley/*` repos. Pin to `@v1`. Breaking changes → `@v
 | `.github/workflows/ci-node.yml` | Node 22 lint + typecheck + vitest + docker build | steveackleyorg |
 | `.github/workflows/ci-astro.yml` | Astro 6 + Postgres 16 + Playwright E2E | steveackleyorg |
 | `.github/workflows/deploy-ec2-ssh.yml` | EC2 via SSH + docker compose + health check | steveackleyorg |
-| `.github/workflows/deploy-k3s-helm.yml` | K3s via local-registry sync + Helm upgrade | p1-opshub |
 | `.github/workflows/secret-scan.yml` | grep for telemetry SDKs + AWS keys + PEM | axon-main |
 | `.github/workflows/tracker-guard.yml` | Cookie-setting tracker gate — keeps public sites banner-free | fleet cookie audit 2026-08-05 |
 | `.github/workflows/triage-issues.yml` | Move referenced issues to Ready For Test | p1-opshub |
@@ -135,7 +134,6 @@ See CHANGELOG.md for per-version details.
 
 ## Known limitations (v1)
 
-1. **`deploy-k3s-helm.yml` is p1-opshub-shaped.** It requires a `helm-script` (`.sh` file present on the self-hosted runner), `helm-set-key`, `deployment-name`, `namespace`, `local-image-name`, and `short-sha`. Not yet a general-purpose reusable workflow. New K3s-deployed repos should copy p1-opshub's wiring end-to-end, or wait for a generalized `deploy-k3s-helm-basic.yml`.
-2. **`ci-astro.yml` defaults `workspace: "apps/site"`** (steveackleyorg monorepo shape). Single-package repos must pass `workspace: ""`. The workflow also expects `test:unit` / `test:integration` npm scripts alongside `test:e2e`.
-3. **`triage-issues.yml` requires `after_sha`**. Callers must pass `with: { after_sha: ${{ github.sha }} }`.
-4. **`r2-upload` `delete-stale` is not implemented.** Upload/overwrite works; pruning stale remote keys needs R2 S3-API credentials (Access Key ID/Secret), a different secret than the Cloudflare API token the action takes. `delete-stale: true` fails fast rather than silently not deleting.
+1. **`ci-astro.yml` defaults `workspace: "apps/site"`** (steveackleyorg monorepo shape). Single-package repos must pass `workspace: ""`. The workflow also expects `test:unit` / `test:integration` npm scripts alongside `test:e2e`.
+2. **`triage-issues.yml` requires `after_sha`**. Callers must pass `with: { after_sha: ${{ github.sha }} }`.
+3. **`r2-upload` `delete-stale` is not implemented.** Upload/overwrite works; pruning stale remote keys needs R2 S3-API credentials (Access Key ID/Secret), a different secret than the Cloudflare API token the action takes. `delete-stale: true` fails fast rather than silently not deleting.
