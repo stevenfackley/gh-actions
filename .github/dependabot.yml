@@ -1,6 +1,27 @@
 version: 2
 updates:
+  # Reusable workflows (.github/workflows/*.yml). Consumers pin the floating
+  # v1 tag, which is moved by hand (main -> v1 -> consumers), so bumps land on
+  # main here and ship when v1 is retagged. Fleet guardrail (2026-09-04):
+  # monthly, grouped, limit 3; majors stay individual so each gets its own
+  # rollout decision.
   - package-ecosystem: github-actions
     directory: /
-    schedule: { interval: weekly, day: monday }
-    open-pull-requests-limit: 10
+    schedule: { interval: monthly }
+    open-pull-requests-limit: 3
+    groups:
+      workflow-actions-minor-patch:
+        update-types: [minor, patch]
+
+  # Composite actions (.github/actions/*/action.yml). Dependabot does not
+  # look inside these from the root entry, so they drifted behind the
+  # workflows (docker/login-action v3, setup-buildx v3, build-push v6,
+  # setup-node v6 while the workflows are on v4/v4/v7/v7).
+  - package-ecosystem: github-actions
+    directories:
+      - /.github/actions/*
+    schedule: { interval: monthly }
+    open-pull-requests-limit: 3
+    groups:
+      composite-actions-minor-patch:
+        update-types: [minor, patch]
