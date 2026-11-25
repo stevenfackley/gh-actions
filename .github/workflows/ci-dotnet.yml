@@ -183,16 +183,30 @@ jobs:
         shell: bash
         run: |
           BANNED="ApplicationInsights|Sentry|Segment|Mixpanel|Datadog|NewRelic|Raygun|Rollbar|Bugsnag|HockeyApp|AppCenter|GoogleAnalytics"
-          if grep -rEi "$BANNED" src/ --include="*.csproj" 2>/dev/null; then
-            echo "::error::Banned telemetry/analytics package detected."
-            exit 1
-          fi
-          echo "No banned telemetry packages."
+          ERR=$(mktemp)
+          # Every tracked project file, wherever it sits. This used to be `grep -r ... src/ 2>/dev/null`:
+          # in a repo with no src/ the error was thrown away and the step passed having read nothing.
+          HITS=$(git grep -nIiE "$BANNED" -- '*.csproj' 2>"$ERR") && RC=0 || RC=$?
+          case "$RC" in
+            0)
+              echo "::error::Banned telemetry/analytics package detected:"
+              echo "$HITS"
+              exit 1
+              ;;
+            1)
+              echo "No banned telemetry packages."
+              ;;
+            *)
+              echo "::error::git grep failed (exit $RC); the telemetry check did not run."
+              cat "$ERR"
+              exit 1
+              ;;
+          esac
 
       - name: Secret-shape grep
         shell: bash
         run: |
-          # The same nine shapes as secret-scan.yml. Keep the two lists identical.
+          # The same nine shapes as secret-scan.yml. Keep the two pattern lists identical.
           PATTERNS='InstrumentationKey=|https://[a-f0-9]+@[a-z0-9]+\.ingest\.sentry\.io|AKIA[0-9A-Z]{16}|ASIA[0-9A-Z]{16}|xoxb-[0-9]+-[0-9]+-[a-zA-Z0-9]+|sk_live_[0-9a-zA-Z]+|sk-ant-[0-9a-zA-Z_-]+|ghp_[0-9a-zA-Z]{36,}|-----BEGIN (RSA|OPENSSH|EC|PGP) PRIVATE KEY-----'
           ERR=$(mktemp)
           # git grep exits 0 on a match, 1 on no match, anything else on an error.
