@@ -4,6 +4,17 @@ All notable changes to the reusable workflows. Tags follow `v<MAJOR>`.
 
 ## Unreleased
 
+- `ci-dotnet`: the `Secret-shape grep` step looks for the same nine shapes as `secret-scan` (it knew five:
+  no `ASIA`, `sk_live_`, `sk-ant-`, `ghp_` or PGP key block), and a `git grep` error now fails the job. The
+  step was `if git grep ... 2>/dev/null; then fail`, so an error counted as "no secrets". Checked against
+  the default branch of all eleven callers before rollout; certavoice and fairsquare first had key-shaped
+  test fixtures split into two pieces.
+
+- `ci-dotnet`: the `Verify no banned telemetry packages` step reads every tracked `*.csproj`. It ran
+  `grep -r ... src/ 2>/dev/null`, so in a caller with no `src/` (loadbearing, Qavren-Nexus,
+  synap-ecosystem) the error was thrown away and the step passed having read nothing; elsewhere it
+  skipped project files outside `src/`. A `git grep` error now fails the job. All eleven callers pass.
+
 - `deploy-k3s-helm`: removed. Its only consumer, p1-opshub, stopped deploying to K3s when that
   cluster was decommissioned (2026-08-15; Proxmox + K3s in storage since 2026-07-05). No workflow in
   any `stevenfackley/*` repo references it (`gh search code` + every local checkout). `v1` is not
