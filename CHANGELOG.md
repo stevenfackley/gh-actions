@@ -4,23 +4,32 @@ All notable changes to the reusable workflows. Tags follow `v<MAJOR>`.
 
 ## Unreleased
 
-- `secret-scan`, `ci-dotnet`, `ci-node`, `ci-python`: a tenth secret shape, the plain
-  `BEGIN PRIVATE KEY` header (PKCS#8). App Store Connect `.p8` keys and Google service-account keys use
-  it, and no scan matched it. Kairis, synap-ecosystem and Qavren-Nexus had the header written whole in
-  tests and docs; those were split or reworded first.
+- `secret-scan`, `ci-dotnet`, `ci-node`, `ci-python`: one rule for every PEM private-key header,
+  `-----BEGIN ([A-Z0-9]+ )*PRIVATE KEY( BLOCK)?-----`. The old rule named RSA, OPENSSH, EC and PGP. It
+  missed the plain PKCS#8 header (App Store Connect `.p8` keys, Google service-account keys), the
+  encrypted PKCS#8 and DSA headers, and every real PGP key: gpg writes `PRIVATE KEY BLOCK`, which the
+  PGP alternative never matched. Kairis, synap-ecosystem and Qavren-Nexus had a key header written
+  whole in tests and docs; those were split or reworded first.
+
+- `ci-dotnet`, `ci-node`, `ci-python`: the secret step now leaves out the same files as `secret-scan`
+  and as the consumers' `scripts/scan-secrets.ps1`: `.env.example`, `docs/**`, `.claude/**`,
+  `.agents/**`, `skills/**` and `*scan-secrets*`. `ci-dotnet` used to leave out `.github/workflows/**`
+  as well, so a key pasted into a workflow passed; workflows are read now. It used to read test files
+  named `*scan-secrets*`; those are left out now, as they are locally.
 
 - `ci-node`, `ci-python`: a `Secret-shape grep` step, the same one `ci-dotnet` has, right after checkout.
   A repo that called only these workflows had no secret scan in CI. Checked against the default branch of
   every caller before rollout.
 
-- `secret-scan`: the `Banned-package scan` step reads every tracked `package.json`, `pyproject.toml`
-  and `requirements*.txt`, at any depth. The pathspec `package.json` names the root file only, so a
-  monorepo's `apps/*/package.json` was never read (`*.csproj` was already read at any depth). A
-  `git grep` error now fails the job; it was `... 2>/dev/null || true`. No caller has a banned package
-  in a nested manifest today.
+- `secret-scan`: the `Banned-package scan` step reads every tracked `package.json` and `pyproject.toml`
+  at any depth, `requirements*.txt` at any depth, and every `.txt` under a `requirements/` folder. The
+  pathspecs `package.json` and `pyproject.toml` named the root file only, so a monorepo's
+  `apps/*/package.json` was never read (`*.csproj` was already read at any depth). A `git grep` error
+  now fails the job; it was `... 2>/dev/null || true`. Files git takes for binary are skipped. No caller
+  has a banned package in a nested manifest today.
 
-- This repo's `ci`: a `pattern-parity` job fails when the secret-shape list differs between the four
-  workflows that carry it.
+- This repo's `ci`: a `pattern-parity` job fails when the secret-shape list or the leave-outs differ
+  between the four workflows that carry them.
 
 - `ci-dotnet`: the `Secret-shape grep` step looks for the same nine shapes as `secret-scan` (it knew five:
   no `ASIA`, `sk_live_`, `sk-ant-`, `ghp_` or PGP key block), and a `git grep` error now fails the job. The
