@@ -15,3 +15,24 @@ jobs:
         uses: docker://rhysd/actionlint:1.7.7
         with:
           args: -color
+
+  pattern-parity:
+    name: Secret-shape lists match
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: One pattern list in four workflows
+        shell: bash
+        run: |
+          # secret-scan.yml, ci-dotnet.yml, ci-node.yml and ci-python.yml each carry the list. A shape added
+          # to one of them and not the others is a hole nobody sees.
+          # Anchored to the start of the line, so the greps in this file do not count themselves.
+          ASSIGN="^[[:space:]]*PATTERNS='"
+          FILES=$(grep -l "$ASSIGN" .github/workflows/*.yml | wc -l)
+          LISTS=$(grep -h "$ASSIGN" .github/workflows/*.yml | sed 's/^[[:space:]]*//' | sort -u | wc -l)
+          if [ "$FILES" -ne 4 ] || [ "$LISTS" -ne 1 ]; then
+            echo "::error::Expected one secret-shape list in four workflows; found $LISTS distinct list(s) in $FILES file(s)."
+            grep -n "$ASSIGN" .github/workflows/*.yml
+            exit 1
+          fi
+          echo "One list, four workflows."

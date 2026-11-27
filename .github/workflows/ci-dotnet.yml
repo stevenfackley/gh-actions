@@ -206,8 +206,9 @@ jobs:
       - name: Secret-shape grep
         shell: bash
         run: |
-          # The same nine shapes as secret-scan.yml. Keep the two pattern lists identical.
-          PATTERNS='InstrumentationKey=|https://[a-f0-9]+@[a-z0-9]+\.ingest\.sentry\.io|AKIA[0-9A-Z]{16}|ASIA[0-9A-Z]{16}|xoxb-[0-9]+-[0-9]+-[a-zA-Z0-9]+|sk_live_[0-9a-zA-Z]+|sk-ant-[0-9a-zA-Z_-]+|ghp_[0-9a-zA-Z]{36,}|-----BEGIN (RSA|OPENSSH|EC|PGP) PRIVATE KEY-----'
+          # The same shapes as secret-scan.yml, ci-node.yml and ci-python.yml. This repo's own ci.yml fails
+          # when the four PATTERNS lines differ.
+          PATTERNS='InstrumentationKey=|https://[a-f0-9]+@[a-z0-9]+\.ingest\.sentry\.io|AKIA[0-9A-Z]{16}|ASIA[0-9A-Z]{16}|xoxb-[0-9]+-[0-9]+-[a-zA-Z0-9]+|sk_live_[0-9a-zA-Z]+|sk-ant-[0-9a-zA-Z_-]+|ghp_[0-9a-zA-Z]{36,}|-----BEGIN ((RSA|OPENSSH|EC|PGP) )?PRIVATE KEY-----'
           ERR=$(mktemp)
           # git grep exits 0 on a match, 1 on no match, anything else on an error.
           # An error must fail the job: `if git grep ... 2>/dev/null; then fail` read it as "no secrets".
