@@ -58,6 +58,31 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - name: Secret-shape grep
+        shell: bash
+        run: |
+          # The same shapes as secret-scan.yml, ci-dotnet.yml and ci-node.yml. This repo's own ci.yml fails
+          # when the four PATTERNS lines differ.
+          PATTERNS='InstrumentationKey=|https://[a-f0-9]+@[a-z0-9]+\.ingest\.sentry\.io|AKIA[0-9A-Z]{16}|ASIA[0-9A-Z]{16}|xoxb-[0-9]+-[0-9]+-[a-zA-Z0-9]+|sk_live_[0-9a-zA-Z]+|sk-ant-[0-9a-zA-Z_-]+|ghp_[0-9a-zA-Z]{36,}|-----BEGIN ([A-Z0-9]+ )*PRIVATE KEY( BLOCK)?-----'
+          ERR=$(mktemp)
+          # git grep exits 0 on a match, 1 on no match, anything else on an error, and an error fails the job.
+          HITS=$(git grep -nIE "$PATTERNS" -- ':(exclude).env.example' ':(exclude)docs/**' ':(exclude).claude/**' ':(exclude).agents/**' ':(exclude)skills/**' ':(exclude)*scan-secrets*' 2>"$ERR") && RC=0 || RC=$?
+          case "$RC" in
+            0)
+              echo "::error::Possible secret committed:"
+              echo "$HITS"
+              exit 1
+              ;;
+            1)
+              echo "No secret-shaped strings found."
+              ;;
+            *)
+              echo "::error::git grep failed (exit $RC); the secret scan did not run."
+              cat "$ERR"
+              exit 1
+              ;;
+          esac
+
       - name: Setup Python
         uses: actions/setup-python@v7
         with:
