@@ -37,10 +37,10 @@ jobs:
             exit 1
           fi
           # The leave-outs must match too: a file one workflow skips and another reads is the same kind of hole.
-          SKIPS=$(for F in $(grep -l "$ASSIGN" .github/workflows/*.yml); do grep -o "':(exclude)[^']*'" "$F" | sort -u | tr '\n' ' '; echo; done | sort -u | wc -l)
+          SKIPS=$(grep -l "$ASSIGN" .github/workflows/*.yml | while IFS= read -r F; do grep -o "':(exclude)[^']*'" "$F" | sort -u | tr '\n' ' '; echo; done | sort -u | wc -l)
           if [ "$SKIPS" -ne 1 ]; then
             echo "::error::The four workflows do not leave out the same files:"
-            for F in $(grep -l "$ASSIGN" .github/workflows/*.yml); do echo "$F: $(grep -o "':(exclude)[^']*'" "$F" | sort -u | tr '\n' ' ')"; done
+            grep -l "$ASSIGN" .github/workflows/*.yml | while IFS= read -r F; do echo "$F: $(grep -o "':(exclude)[^']*'" "$F" | sort -u | tr '\n' ' ')"; done
             exit 1
           fi
           echo "One list and one set of leave-outs, four workflows."
